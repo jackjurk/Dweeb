@@ -1,0 +1,201 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Enums
+enum Role {
+  CLIENT
+  DEVELOPER
+  ADMIN
+}
+
+enum Availability {
+  OPEN
+  BUSY
+  UNAVAILABLE
+}
+
+enum ProjectStatus {
+  FUTURE
+  ACTIVE
+  COMPLETED
+  CANCELED
+}
+
+enum MatchAction {
+  LIKE
+  PASS
+  SAVE
+  HIRE
+}
+
+enum OrderStatus {
+  PAID
+  REFUNDED
+}
+
+// Models
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  role          Role     @default(CLIENT)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  developer     DeveloperProfile?
+  client        ClientProfile?
+  sessions      Session[]
+  accounts      Account[]
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model DeveloperProfile {
+  id            String   @id @default(cuid())
+  userId        String   @unique
+  user          User     @relation(fields: [userId], references: [id])
+  headline      String?
+  bio           String?
+  contactEmail  String?
+  phone         String?
+  location      String?
+  skills        String[] // tags: 'react','zapier','openai','shopify'
+  industries    String[] // tags: 'retail','healthcare'
+  minProjectFee Int?     // USD
+  hourlyRate    Int?     // optional
+  portfolio     Json?    // {links:[{title,url}], images:[...]}
+  isVetted      Boolean  @default(false)
+  boostScore    Int      @default(0) // ad system: raises rank
+  rating        Float    @default(0)
+  ratingCount   Int      @default(0)
+  availability  Availability @default(OPEN)
+  projects      Project[]
+  matches       Match[]
+  boostOrders   BoostOrder[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model ClientProfile {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  user       User     @relation(fields: [userId], references: [id])
+  company    String?
+  phone      String?
+  industry   String?
+  website    String?
+  projects   Project[]
+  matches    Match[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Project {
+  id            String   @id @default(cuid())
+  clientId      String
+  client        User     @relation(fields: [clientId], references: [id])
+  developerId   String?
+  developer     User?    @relation("DevProjects", fields: [developerId], references: [id])
+  title         String
+  description   String
+  status        ProjectStatus @default(FUTURE)
+  budgetFixed   Int? // USD (flat-fee MVP)
+  paymentId     String? // Stripe PaymentIntent id
+  milestones    Milestone[]
+  matches       Match[]
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  dueDate       DateTime?
+}
+
+model Milestone {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id])
+  title       String
+  dueDate     DateTime?
+  completed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Match {
+  id            String   @id @default(cuid())
+  clientId      String
+  client        User     @relation("ClientMatches", fields: [clientId], references: [id])
+  developerId   String
+  developer     User     @relation("DevMatches", fields: [developerId], references: [id])
+  action        MatchAction // LIKE | PASS | SAVE | HIRE
+  projectId     String?
+  project       Project? @relation(fields: [projectId], references: [id])
+  createdAt     DateTime @default(now())
+
+  @@unique([clientId, developerId, projectId])
+}
+
+model BoostOrder {
+  id            String   @id @default(cuid())
+  developerId   String
+  developer     User     @relation(fields: [developerId], references: [id])
+  credits       Int
+  stripePi      String     // PaymentIntent
+  status        OrderStatus @default(PAID)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  action      String
+  entityType  String
+  entityId    String
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id])
+  metadata    Json?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+}
